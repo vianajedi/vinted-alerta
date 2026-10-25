@@ -46,12 +46,12 @@ jobs:
 
       - name: Verificar favoritos e responder ao bot
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN || secrets.VINTEDLIKES2026BOT }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           VINTED_COOKIE: ${{ secrets.VINTED_COOKIE }}
           VINTED_USER_ID: ${{ secrets.VINTED_USER_ID }}
           VINTED_DOMAIN: ${{ vars.VINTED_DOMAIN || 'www.vinted.pt' }}
-          STATE_KEY: ${{ secrets.STATE_KEY }}
+          STATE_KEY: ${{ secrets.STATE_KEY || secrets.VINTEDLIKES2026BOT }}  # sem STATE_KEY, usa o token como chave
           PROXY_URL: ${{ secrets.PROXY_URL }}
         run: python -m vinted_alerta --once --poll-seconds 240
 
