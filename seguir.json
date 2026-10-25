@@ -1,10 +1,16 @@
 [
+  {"q": "carhartt homem", "filters": {"brand_ids[]": [362, 872289], "size_ids[]": [207]}, "label": "Carhartt, Carhartt WIP, S"},
+  {"q": "homem casaco adidas originals", "filters": {"brand_ids[]": [194976], "size_ids[]": [207]}, "label": "adidas Originals, S"},
+  {"q": "fox capacete", "filters": {"brand_ids[]": [3149]}, "label": "Fox"},
+  {"q": "eastpak bolsas de cintura", "filters": {"brand_ids[]": [303]}, "label": "Eastpak"},
+  {"q": "eastpak mochila", "filters": {"brand_ids[]": [303]}, "label": "Eastpak"},
+  {"q": "eastpak mochila"},
+  {"q": "eastpak tecum", "filters": {"brand_ids[]": [303]}, "label": "Eastpak"},
+  {"q": "campomaggi", "filters": {"brand_ids[]": [148292]}, "label": "Campomaggi"},
   {"q": "timberland homem", "filters": {"size_ids[]": [781, 782]}, "label": "40,5, 41"},
   {"q": "schott homem blusoes couro", "filters": {"brand_ids[]": [3799], "size_ids[]": [208]}, "label": "Schott, M"},
   {"q": "endura homem", "filters": {"brand_ids[]": [317532], "size_ids[]": [209]}, "label": "Endura, L"},
   {"q": "new balance homem 2002", "filters": {"size_ids[]": [781, 782]}, "label": "40,5, 41"},
   {"q": "fox capacetes para bicicleta"},
-  {"q": "DJI mini 5 pro"},
-  {"q": "DJI neo 2"},
-  {"q": "homem casaco adidas originals", "filters": {"size_ids[]": [207]}, "label": "S"}
+  {"q": "DJI mini 5 pro"}
 ]

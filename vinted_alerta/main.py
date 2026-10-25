@@ -174,7 +174,12 @@ def check_vinted(env: Env, ctx: bot.Ctx, client_factory=VintedClient, now: float
 
 
 def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
-    """Junta às pesquisas seguidas as que estão em seguir.json (uma vez cada; se as removeres no bot, não voltam)."""
+    """Sincroniza as pesquisas seguidas com seguir.json (as pesquisas guardadas na Vinted).
+
+    • entradas novas no ficheiro → passam a ser seguidas (uma vez; se as removeres no bot, não voltam)
+    • entradas que saíram do ficheiro → deixam de ser seguidas (só as que vieram do ficheiro)
+    • pesquisas adicionadas diretamente no bot nunca são tocadas
+    """
     if not os.path.exists(path):
         return 0
     try:
@@ -185,6 +190,16 @@ def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
         return 0
     fol = ctx.state["follows"]
     imported = set(fol.setdefault("imported", []))
+    file_keys = {search_key(str(e.get("q") or "").strip(), e.get("filters")) for e in entries if e.get("q")}
+
+    # 1) retirar as que deixaram de estar guardadas na Vinted
+    before = len(fol["searches"])
+    gone = imported - file_keys
+    fol["searches"] = [x for x in fol["searches"] if search_key(x["q"], x.get("filters")) not in gone]
+    removed = before - len(fol["searches"])
+    imported -= gone
+
+    # 2) acrescentar as novas
     current = {search_key(x["q"], x.get("filters")) for x in fol["searches"]}
     added, full = 0, False
     for e in entries:
@@ -199,15 +214,21 @@ def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
                 full = True
                 break
             fol["searches"].append({"q": q, "filters": e.get("filters") or {}, "label": e.get("label") or "",
-                                    "added": time.time()})
+                                    "added": time.time(), "origin": "vinted"})
             current.add(key)
             added += 1
         imported.add(key)
     fol["imported"] = sorted(imported)
-    if (added or full) and ctx.chat_id:
-        msg = f"📥 Importei <b>{added}</b> pesquisas guardadas da Vinted para 📌 Seguidos."
+
+    if (added or removed or full) and ctx.chat_id:
+        bits = []
+        if added:
+            bits.append(f"<b>+{added}</b> novas")
+        if removed:
+            bits.append(f"<b>−{removed}</b> que deixaste de ter guardadas")
+        msg = "📥 Pesquisas guardadas da Vinted atualizadas: " + (", ".join(bits) or "sem alterações") + "."
         if full:
-            msg += f"\n⚠️ Atingi o limite de {st.MAX_FOLLOWED_SEARCHES}; as restantes ficaram de fora."
+            msg += f"\n⚠️ Atingi o limite de {st.MAX_FOLLOWED_SEARCHES}; algumas ficaram de fora."
         ctx.tg.send(ctx.chat_id, msg, bot.MAIN_KB)
     if added:
         ctx.force_check = True

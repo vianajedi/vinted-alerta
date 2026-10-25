@@ -569,7 +569,7 @@ def test_importar_pesquisas_uma_vez(tmp_path):
     assert main.import_searches(ctx, str(f)) == 2
     s = ctx.state["follows"]["searches"]
     assert s[0]["filters"] == {"size_ids[]": [781]} and s[1]["q"] == "DJI neo 2"
-    assert "Importei <b>2</b>" in ctx.tg.sent[-1][1]
+    assert "<b>+2</b> novas" in ctx.tg.sent[-1][1]
     n = len(ctx.tg.sent)
     assert main.import_searches(ctx, str(f)) == 0 and len(ctx.tg.sent) == n     # não repete
     bot.handle_update(cb("u:s:1"), ctx)                                          # removida no bot…
@@ -600,3 +600,22 @@ def test_ciclo_usa_filtros_da_pesquisa_seguida():
             return [item("1", brand="Endura", title="Casaco Endura")]
     main.check_vinted(env, ctx, C, now=T0)
     assert calls == [("endura homem", {"brand_ids[]": [317532]})]
+
+
+def test_sincroniza_lista_da_vinted(tmp_path):
+    import json as _j
+    f = tmp_path / "seguir.json"
+    f.write_text(_j.dumps([{"q": "DJI neo 2"}, {"q": "adidas", "filters": {"size_ids[]": [207]}}, {"q": "endura"}]))
+    ctx = ctx_with()
+    bot.follow_search(ctx, "minha pesquisa do bot")
+    main.import_searches(ctx, str(f))
+    bot.handle_update(cb("u:s:3"), ctx)        # remove "endura" no bot
+    # na Vinted: DJI neo 2 deixou de estar guardada, adidas ganhou filtro de marca, nova eastpak
+    f.write_text(_j.dumps([{"q": "adidas", "filters": {"size_ids[]": [207], "brand_ids[]": [194976]}},
+                           {"q": "endura"}, {"q": "eastpak"}]))
+    main.import_searches(ctx, str(f))
+    qs = [(x["q"], x.get("filters", {})) for x in ctx.state["follows"]["searches"]]
+    assert qs == [("minha pesquisa do bot", {}),
+                  ("adidas", {"size_ids[]": [207], "brand_ids[]": [194976]}),
+                  ("eastpak", {})]
+    assert "+2" in ctx.tg.sent[-1][1] and "−2" in ctx.tg.sent[-1][1]
