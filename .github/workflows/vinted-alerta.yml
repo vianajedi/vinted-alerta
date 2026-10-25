@@ -76,3 +76,11 @@ jobs:
             | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY" || true
           # O GitHub desliga agendamentos após 60 dias sem atividade; isto volta a ativá-lo.
           gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/vinted-alerta.yml/enable" >/dev/null || true
+
+      # O agendamento do GitHub é pouco fiável: cada execução lança a seguinte.
+      # (Para parar o bot: Actions → Vinted Alerta → ••• → Disable workflow, ou cancelar a execução.)
+      - name: Lançar a próxima execução
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run vinted-alerta.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
