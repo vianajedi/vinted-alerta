@@ -2,7 +2,7 @@ name: Vinted Alerta
 
 on:
   schedule:
-    - cron: "*/5 * * * *"    # arranca de 5 em 5 min (o GitHub pode atrasar); a Vinted é lida de 10 em 10
+    - cron: "7 * * * *"      # de hora a hora; cada execução fica ligada ~5h45 e a seguinte já fica em fila
   workflow_dispatch:         # botão "Run workflow" para correr à mão
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verificar:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +53,12 @@ jobs:
           VINTED_DOMAIN: ${{ vars.VINTED_DOMAIN || 'www.vinted.pt' }}
           STATE_KEY: ${{ secrets.STATE_KEY || secrets.VINTEDLIKES2026BOT }}  # sem STATE_KEY, usa o token como chave
           PROXY_URL: ${{ secrets.PROXY_URL }}
-        run: python -m vinted_alerta --once --poll-seconds 240
+        run: |
+          # Fica ligado ~5h45 (limite do GitHub: 6h). O estado é gravado a cada ciclo de 10 min.
+          end=$((SECONDS + 20700))
+          while [ $SECONDS -lt $end ]; do
+            python -m vinted_alerta --once --poll-seconds $(( end - SECONDS < 600 ? end - SECONDS : 600 )) || sleep 30
+          done
 
       - name: Guardar estado
         if: always() && hashFiles('state.enc') != ''
