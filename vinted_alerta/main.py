@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import os
 import time
@@ -10,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from . import bot, detector, state as st
 from .telegram import Telegram
-from .vinted import AuthError, BlockedError, NotFound, VintedClient, VintedError, refine
+from .vinted import AuthError, BlockedError, NotFound, VintedClient, VintedError, refine, search_key
 
 log = logging.getLogger("vinted_alerta")
 
@@ -110,7 +111,7 @@ def check_vinted(env: Env, ctx: bot.Ctx, client_factory=VintedClient, now: float
     # 2) pesquisas seguidas
     for sr in list(fol["searches"]):
         try:
-            src.add(refine(client.search(sr["q"], "new"), sr["q"])[0], "search:" + sr["q"])
+            src.add(refine(client.search(sr["q"], "new", sr.get("filters")), sr["q"])[0], "search:" + sr["q"])
         except Exception as exc:
             src.errors.append(exc)
         time.sleep(1.0)
@@ -170,6 +171,47 @@ def check_vinted(env: Env, ctx: bot.Ctx, client_factory=VintedClient, now: float
     if ctx.chat_id and not s["config"]["paused"]:
         for a in alerts:
             bot.send_alert(ctx.tg, ctx.chat_id, a)
+
+
+def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
+    """Junta às pesquisas seguidas as que estão em seguir.json (uma vez cada; se as removeres no bot, não voltam)."""
+    if not os.path.exists(path):
+        return 0
+    try:
+        with open(path, encoding="utf-8") as fh:
+            entries = json.load(fh)
+    except (OSError, ValueError):
+        log.warning("seguir.json inválido")
+        return 0
+    fol = ctx.state["follows"]
+    imported = set(fol.setdefault("imported", []))
+    current = {search_key(x["q"], x.get("filters")) for x in fol["searches"]}
+    added, full = 0, False
+    for e in entries:
+        q = str(e.get("q") or "").strip()
+        if not q:
+            continue
+        key = search_key(q, e.get("filters"))
+        if key in imported:
+            continue
+        if key not in current:
+            if len(fol["searches"]) >= st.MAX_FOLLOWED_SEARCHES:
+                full = True
+                break
+            fol["searches"].append({"q": q, "filters": e.get("filters") or {}, "label": e.get("label") or "",
+                                    "added": time.time()})
+            current.add(key)
+            added += 1
+        imported.add(key)
+    fol["imported"] = sorted(imported)
+    if (added or full) and ctx.chat_id:
+        msg = f"📥 Importei <b>{added}</b> pesquisas guardadas da Vinted para 📌 Seguidos."
+        if full:
+            msg += f"\n⚠️ Atingi o limite de {st.MAX_FOLLOWED_SEARCHES}; as restantes ficaram de fora."
+        ctx.tg.send(ctx.chat_id, msg, bot.MAIN_KB)
+    if added:
+        ctx.force_check = True
+    return added
 
 
 def process_updates(ctx: bot.Ctx, timeout: int) -> int:
@@ -234,6 +276,7 @@ def main(argv=None) -> int:
     ctx = bot.Ctx(tg=tg, state=state, env_chat_id=env.tg_chat, tz=env.tz, domain=env.domain)
     if warn and ctx.chat_id:
         tg.send(ctx.chat_id, "ℹ️ " + warn)
+    import_searches(ctx)
 
     try:
         if a.loop:

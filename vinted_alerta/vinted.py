@@ -293,7 +293,7 @@ class VintedClient:
             raise VintedError("resposta não-JSON") from exc
 
     def _html(self, path: str, params: dict | None = None, _retry: bool = True) -> str:
-        url = self.base + path + ("?" + urlencode(params) if params else "")
+        url = self.base + path + ("?" + urlencode(params, doseq=True) if params else "")
         r = self.s.get(url, headers=HTML_HEADERS, timeout=40)
         text = r.text or ""
         if r.status_code in (403, 429) or (r.status_code == 200 and _looks_blocked(text)):
@@ -342,8 +342,12 @@ class VintedClient:
             time.sleep(1.0)
         return items
 
-    def search(self, text: str, order: str = "new") -> list[dict]:
-        params = {"search_text": parse_query(text)["text"] or text, "order": ORDERS.get(order, order)}
+    def search(self, text: str, order: str = "new", filters: dict | None = None) -> list[dict]:
+        """filters: filtros da Vinted, ex. {"size_ids[]": [208], "brand_ids[]": [3799]}."""
+        params = [("search_text", parse_query(text)["text"] or text), ("order", ORDERS.get(order, order))]
+        for k, vals in (filters or {}).items():
+            for v in (vals if isinstance(vals, list) else [vals]):
+                params.append((k, v))
         items = parse_search_page(self._html("/catalog", params), self.base)
         if not items:
             raise VintedError("a página de pesquisa não trouxe artigos (formato mudou?)")
@@ -365,9 +369,19 @@ class VintedClient:
         return "; ".join(f"{k}={v}" for k, v in vals.items())
 
 
-def search_url(domain: str, text: str, order: str = "new") -> str:
+def search_url(domain: str, text: str, order: str = "new", filters: dict | None = None) -> str:
     q = parse_query(text)["text"] or text
-    return f"https://{domain}/catalog?" + urlencode({"search_text": q, "order": ORDERS.get(order, order)})
+    params = [("search_text", q), ("order", ORDERS.get(order, order))]
+    for k, vals in (filters or {}).items():
+        params += [(k, v) for v in (vals if isinstance(vals, list) else [vals])]
+    return f"https://{domain}/catalog?" + urlencode(params)
+
+
+def search_key(q: str, filters: dict | None = None) -> str:
+    """Identifica uma pesquisa (texto + filtros) para não a seguir duas vezes."""
+    f = ";".join(f"{k}={','.join(str(x) for x in sorted(v if isinstance(v, list) else [v]))}"
+                 for k, v in sorted((filters or {}).items()))
+    return norm(q) + ("|" + f if f else "")
 
 
 # ---------------------------------------------------------------- filtro de relevância

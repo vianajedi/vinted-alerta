@@ -35,7 +35,7 @@ def default_state() -> dict:
         "version": 1,
         "config": dict(DEFAULT_CONFIG),
         "items": {},
-        "follows": {"items": {}, "searches": []},
+        "follows": {"items": {}, "searches": [], "imported": []},
         "tg": {"offset": 0, "chat_id": None, "commands_set": 0, "last_search": None},
         "vinted": {"cookies": None, "env_hash": None, "user_id": None},
         "notices": {},

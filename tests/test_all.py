@@ -298,7 +298,7 @@ class FakeClient:
         FakeClient.calls.append(("fav", uid))
         return [dict(i) for i in FakeClient.favs]
 
-    def search(self, q, order="new"):
+    def search(self, q, order="new", filters=None):
         FakeClient.calls.append(("search", q, order))
         r = FakeClient.searches.get(q, [])
         if isinstance(r, Exception):
@@ -548,3 +548,55 @@ def test_bot_mostra_filtro_aplicado():
     text = ctx.tg.sent[-1][1]
     assert "Filtrado: marca Fox, tamanho M — 1 de 2" in text
     assert "Casco cross" in text and "Scorpion" not in text and "Tam. M · Muito bom · Fox" in text
+
+
+# ---------------- pesquisas guardadas da Vinted (filtros + importação) ----------------
+def test_pesquisa_com_filtros_da_vinted():
+    page = fx.search_page([fx.product(1, "A", 2, 5.0)])
+    sess = FakeSession([Resp(200, text=page)])
+    c = VintedClient("www.vinted.pt", session=sess)
+    c.search("schott homem", "new", {"brand_ids[]": [3799], "size_ids[]": [208, 209]})
+    url = sess.log[0][1]
+    assert "brand_ids%5B%5D=3799" in url and "size_ids%5B%5D=208" in url and "size_ids%5B%5D=209" in url
+    assert vt.search_key("Schott  Homem", {"size_ids[]": [209, 208]}) == vt.search_key("schott homem", {"size_ids[]": [208, 209]})
+    assert vt.search_key("x", {"size_ids[]": [1]}) != vt.search_key("x")
+
+
+def test_importar_pesquisas_uma_vez(tmp_path):
+    f = tmp_path / "seguir.json"
+    f.write_text('[{"q": "timberland homem", "filters": {"size_ids[]": [781]}, "label": "40,5"}, {"q": "DJI neo 2"}]')
+    ctx = ctx_with()
+    assert main.import_searches(ctx, str(f)) == 2
+    s = ctx.state["follows"]["searches"]
+    assert s[0]["filters"] == {"size_ids[]": [781]} and s[1]["q"] == "DJI neo 2"
+    assert "Importei <b>2</b>" in ctx.tg.sent[-1][1]
+    n = len(ctx.tg.sent)
+    assert main.import_searches(ctx, str(f)) == 0 and len(ctx.tg.sent) == n     # não repete
+    bot.handle_update(cb("u:s:1"), ctx)                                          # removida no bot…
+    assert main.import_searches(ctx, str(f)) == 0                                # …não volta
+    assert len(ctx.state["follows"]["searches"]) == 1
+    bot.handle_update(msg(bot.BTN_FOLLOWS), ctx)
+    assert "«timberland homem» <i>(40,5)</i>" in ctx.tg.sent[-1][1]
+
+
+def test_importar_respeita_limite(tmp_path):
+    import json as _j
+    f = tmp_path / "seguir.json"
+    f.write_text(_j.dumps([{"q": f"q{i}"} for i in range(st.MAX_FOLLOWED_SEARCHES + 3)]))
+    ctx = ctx_with()
+    assert main.import_searches(ctx, str(f)) == st.MAX_FOLLOWED_SEARCHES
+    assert "limite" in ctx.tg.sent[-1][1]
+
+
+def test_ciclo_usa_filtros_da_pesquisa_seguida():
+    env = main.Env({"STATE_KEY": "k"})
+    ctx = ctx_with()
+    ctx.state["follows"]["searches"].append({"q": "endura homem", "filters": {"brand_ids[]": [317532]}})
+    calls = []
+
+    class C(FakeClient):
+        def search(self, q, order="new", filters=None):
+            calls.append((q, filters))
+            return [item("1", brand="Endura", title="Casaco Endura")]
+    main.check_vinted(env, ctx, C, now=T0)
+    assert calls == [("endura homem", {"brand_ids[]": [317532]})]
