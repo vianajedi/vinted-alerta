@@ -1,0 +1,73 @@
+name: Vinted Alerta
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"    # arranca de 5 em 5 min (o GitHub pode atrasar); a Vinted é lida de 10 em 10
+  workflow_dispatch:         # botão "Run workflow" para correr à mão
+
+permissions:
+  actions: write             # limpar estados antigos e manter o agendamento ativo
+  contents: read
+
+concurrency:
+  group: vinted-alerta
+  cancel-in-progress: false
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      # O código foi carregado como .zip: extrai-o aqui antes de correr
+      - name: Extrair código do zip
+        run: |
+          if [ ! -f requirements.txt ] && ls *.zip >/dev/null 2>&1; then
+            unzip -q -o "$(ls *.zip | head -1)" -d _zip
+            cp -rn _zip/*/. . 2>/dev/null || cp -rn _zip/. .
+            rm -rf _zip
+          fi
+          ls
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restaurar estado
+        uses: actions/cache/restore@v4
+        with:
+          path: state.enc
+          key: vinted-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: vinted-state-
+
+      - name: Verificar favoritos e responder ao bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VINTED_COOKIE: ${{ secrets.VINTED_COOKIE }}
+          VINTED_USER_ID: ${{ secrets.VINTED_USER_ID }}
+          VINTED_DOMAIN: ${{ vars.VINTED_DOMAIN || 'www.vinted.pt' }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+        run: python -m vinted_alerta --once --poll-seconds 240
+
+      - name: Guardar estado
+        if: always() && hashFiles('state.enc') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: state.enc
+          key: vinted-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Limpar estados antigos e manter o agendamento ativo
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --key vinted-state- --sort created_at --order desc --limit 100 --json id --jq '.[10:][].id' \
+            | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY" || true
+          # O GitHub desliga agendamentos após 60 dias sem atividade; isto volta a ativá-lo.
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/vinted-alerta.yml/enable" >/dev/null || true
