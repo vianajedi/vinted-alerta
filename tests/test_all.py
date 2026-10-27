@@ -619,3 +619,28 @@ def test_sincroniza_lista_da_vinted(tmp_path):
                   ("adidas", {"size_ids[]": [207], "brand_ids[]": [194976]}),
                   ("eastpak", {})]
     assert "+2" in ctx.tg.sent[-1][1] and "−2" in ctx.tg.sent[-1][1]
+
+
+def test_pesquisa_so_por_categoria_sem_texto(tmp_path):
+    import json as _j
+    f = tmp_path / "seguir.json"
+    f.write_text(_j.dumps([{"q": "", "title": "Homem → Hoodies com fecho",
+                            "filters": {"catalog[]": [1812], "brand_ids[]": [4273], "size_ids[]": [207]},
+                            "label": "Polo Ralph Lauren, S"}]), encoding="utf-8")
+    ctx = ctx_with()
+    assert main.import_searches(ctx, str(f)) == 1
+    bot.handle_update(msg(bot.BTN_FOLLOWS), ctx)
+    assert "«Homem → Hoodies com fecho» <i>(Polo Ralph Lauren, S)</i>" in ctx.tg.sent[-1][1]
+    calls = []
+
+    class C(FakeClient):
+        def search(self, q, order="new", filters=None):
+            calls.append((q, filters))
+            return [item("1", brand="Polo Ralph Lauren", title="Hoodie", count=0)]
+    main.check_vinted(main.Env({"STATE_KEY": "k"}), ctx, C, now=T0)
+    assert calls == [("", {"catalog[]": [1812], "brand_ids[]": [4273], "size_ids[]": [207]})]
+    assert ctx.state["items"]["1"]["source"] == "search:Homem → Hoodies com fecho"
+    page = fx.search_page([fx.product(1, "A", 2, 5.0)])
+    sess = FakeSession([Resp(200, text=page)])
+    VintedClient("www.vinted.pt", session=sess).search("", "new", {"catalog[]": [1812]})
+    assert "search_text=&" in sess.log[0][1] and "catalog%5B%5D=1812" in sess.log[0][1]

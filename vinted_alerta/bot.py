@@ -179,8 +179,9 @@ def follows_view(state: dict) -> tuple[str, dict]:
         lines.append("\n<b>Pesquisas</b>")
         for n, s in enumerate(fol["searches"]):
             label = f" <i>({esc(s['label'])})</i>" if s.get("label") else ""
-            lines.append(f"{n + 1}. «{esc(s['q'])}»{label}")
-            rows.append([b(f"❌ «{s['q'][:28]}»", f"u:s:{n}")])
+            name = s["q"] or s.get("title") or "pesquisa"
+            lines.append(f"{n + 1}. «{esc(name)}»{label}")
+            rows.append([b(f"❌ «{name[:28]}»", f"u:s:{n}")])
     if fol["items"]:
         lines.append("\n<b>Artigos</b>")
         pairs = []

@@ -111,7 +111,8 @@ def check_vinted(env: Env, ctx: bot.Ctx, client_factory=VintedClient, now: float
     # 2) pesquisas seguidas
     for sr in list(fol["searches"]):
         try:
-            src.add(refine(client.search(sr["q"], "new", sr.get("filters")), sr["q"])[0], "search:" + sr["q"])
+            src.add(refine(client.search(sr["q"], "new", sr.get("filters")), sr["q"])[0],
+                    "search:" + (sr["q"] or sr.get("title") or sr.get("label") or "pesquisa"))
         except Exception as exc:
             src.errors.append(exc)
         time.sleep(1.0)
@@ -190,7 +191,8 @@ def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
         return 0
     fol = ctx.state["follows"]
     imported = set(fol.setdefault("imported", []))
-    file_keys = {search_key(str(e.get("q") or "").strip(), e.get("filters")) for e in entries if e.get("q")}
+    valid = lambda e: bool(str(e.get("q") or "").strip() or e.get("filters"))  # noqa: E731 (pesquisa só por categoria/marca é válida)
+    file_keys = {search_key(str(e.get("q") or "").strip(), e.get("filters")) for e in entries if valid(e)}
 
     # 1) retirar as que deixaram de estar guardadas na Vinted
     before = len(fol["searches"])
@@ -204,7 +206,7 @@ def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
     added, full = 0, False
     for e in entries:
         q = str(e.get("q") or "").strip()
-        if not q:
+        if not valid(e):
             continue
         key = search_key(q, e.get("filters"))
         if key in imported:
@@ -213,7 +215,8 @@ def import_searches(ctx: bot.Ctx, path: str = "seguir.json") -> int:
             if len(fol["searches"]) >= st.MAX_FOLLOWED_SEARCHES:
                 full = True
                 break
-            fol["searches"].append({"q": q, "filters": e.get("filters") or {}, "label": e.get("label") or "",
+            fol["searches"].append({"q": q, "title": e.get("title") or "", "filters": e.get("filters") or {},
+                                    "label": e.get("label") or "",
                                     "added": time.time(), "origin": "vinted"})
             current.add(key)
             added += 1
